@@ -11,7 +11,50 @@ const ids = [
 const els = Object.fromEntries(ids.map((id) => [id, document.getElementById(id)]));
 const overlayRoot = document.getElementById('overlayRoot');
 const batterStrip = document.querySelector('.batter-strip');
-const stateCache = { lastJson: '' };
+const ballsBox = document.getElementById('ballsBox');
+const strikesBox = document.getElementById('strikesBox');
+const outsBox = document.getElementById('outsBox');
+const baseFirst = document.getElementById('baseFirst');
+const baseSecond = document.getElementById('baseSecond');
+const baseThird = document.getElementById('baseThird');
+const stateCache = { lastJson: '', prevState: null, prevMatchName: '' };
+
+function cloneState(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function pulseElement(element, pulseClass = 'pulse-change') {
+  if (!element) {
+    return;
+  }
+  element.classList.remove(pulseClass);
+  void element.offsetWidth;
+  element.classList.add(pulseClass);
+}
+
+function updateTextWithPulse(element, nextValue, previousValue) {
+  if (!element) {
+    return;
+  }
+  const nextText = String(nextValue ?? '');
+  if (element.textContent !== nextText) {
+    element.textContent = nextText;
+  }
+  if (previousValue !== undefined && String(previousValue ?? '') !== nextText) {
+    pulseElement(element);
+  }
+}
+
+function applyCountLevel(box, level, maxLevel) {
+  if (!box) {
+    return;
+  }
+  for (let i = 0; i <= maxLevel; i += 1) {
+    box.classList.remove(`level-${i}`);
+  }
+  const normalized = Math.max(0, Math.min(Number(level || 0), maxLevel));
+  box.classList.add(`level-${normalized}`);
+}
 
 function avgText(player) {
   const ab = Number(player?.ab || 0);
@@ -24,9 +67,9 @@ function avgText(player) {
 
 function battingLine(player) {
   if (!player) {
-    return '0-0';
+    return 'AB 0  H 0  RBI 0  BB 0  SO 0  AVG .000';
   }
-  return `${player.h}-${player.ab} | 2B ${player.doubles} 3B ${player.triples} HR ${player.hr} BB ${player.bb} SO ${player.so} AVG ${avgText(player)}`;
+  return `AB ${player.ab}  H ${player.h}  RBI ${player.rbi}  BB ${player.bb}  SO ${player.so}  AVG ${avgText(player)}`;
 }
 
 function findPlayerById(players, playerId) {
@@ -42,7 +85,18 @@ function getMatchData(root) {
 function applySettings(state) {
   const settings = state?.settings || {};
   overlayRoot.classList.toggle('overlay-compact', Boolean(settings.compactOverlay));
+  overlayRoot.classList.toggle('overlay-outs-only', settings.showBallsStrikes === false);
   batterStrip.style.display = settings.showBatterStrip === false ? 'none' : '';
+}
+
+function toggleBase(baseEl, occupied, previousOccupied) {
+  if (!baseEl) {
+    return;
+  }
+  baseEl.classList.toggle('occupied', Boolean(occupied));
+  if (previousOccupied !== undefined && Boolean(previousOccupied) !== Boolean(occupied)) {
+    pulseElement(baseEl, 'pulse-base');
+  }
 }
 
 function renderState(root) {
@@ -52,40 +106,73 @@ function renderState(root) {
   }
 
   const state = match.state;
+  const prev = stateCache.prevState;
   applySettings(state);
 
-  els.homeTeam.textContent = state.homeTeam;
-  els.awayTeam.textContent = state.awayTeam;
-  els.gameStatus.textContent = state.gameStatus;
-  els.matchName.textContent = match.name || 'PARTITA';
-  els.inningState.textContent = `${state.half === 'top' ? 'TOP' : 'BOT'} ${state.inning}`;
+  updateTextWithPulse(els.homeTeam, state.homeTeam, prev?.homeTeam);
+  updateTextWithPulse(els.awayTeam, state.awayTeam, prev?.awayTeam);
+  updateTextWithPulse(els.gameStatus, state.gameStatus, prev?.gameStatus);
+  updateTextWithPulse(els.matchName, match.name || 'PARTITA', stateCache.prevMatchName || undefined);
+  updateTextWithPulse(
+    els.inningState,
+    `${state.half === 'top' ? 'TOP' : 'BOT'} ${state.inning}`,
+    prev ? `${prev.half === 'top' ? 'TOP' : 'BOT'} ${prev.inning}` : undefined,
+  );
 
-  els.homeRuns.textContent = state.homeRuns;
-  els.awayRuns.textContent = state.awayRuns;
-  els.homeHits.textContent = state.homeHits;
-  els.awayHits.textContent = state.awayHits;
-  els.homeErrors.textContent = state.homeErrors;
-  els.awayErrors.textContent = state.awayErrors;
-  els.balls.textContent = state.balls;
-  els.strikes.textContent = state.strikes;
-  els.outs.textContent = state.outs;
+  updateTextWithPulse(els.homeRuns, state.homeRuns, prev?.homeRuns);
+  updateTextWithPulse(els.awayRuns, state.awayRuns, prev?.awayRuns);
+  updateTextWithPulse(els.homeHits, state.homeHits, prev?.homeHits);
+  updateTextWithPulse(els.awayHits, state.awayHits, prev?.awayHits);
+  updateTextWithPulse(els.homeErrors, state.homeErrors, prev?.homeErrors);
+  updateTextWithPulse(els.awayErrors, state.awayErrors, prev?.awayErrors);
+  updateTextWithPulse(els.balls, state.balls, prev?.balls);
+  updateTextWithPulse(els.strikes, state.strikes, prev?.strikes);
+  updateTextWithPulse(els.outs, state.outs, prev?.outs);
+
+  applyCountLevel(ballsBox, state.balls, 3);
+  applyCountLevel(strikesBox, state.strikes, 2);
+  applyCountLevel(outsBox, state.outs, 2);
+
+  if (prev && prev.balls !== state.balls) {
+    pulseElement(ballsBox, 'pulse-box');
+  }
+  if (prev && prev.strikes !== state.strikes) {
+    pulseElement(strikesBox, 'pulse-box');
+  }
+  if (prev && prev.outs !== state.outs) {
+    pulseElement(outsBox, 'pulse-box');
+  }
+
+  toggleBase(baseFirst, state.baseRunners?.first, prev?.baseRunners?.first);
+  toggleBase(baseSecond, state.baseRunners?.second, prev?.baseRunners?.second);
+  toggleBase(baseThird, state.baseRunners?.third, prev?.baseRunners?.third);
 
   for (let i = 0; i < 9; i += 1) {
-    document.getElementById(`homeI${i + 1}`).textContent = state.inningScores.home[i] ?? 0;
-    document.getElementById(`awayI${i + 1}`).textContent = state.inningScores.away[i] ?? 0;
+    const homeCell = document.getElementById(`homeI${i + 1}`);
+    const awayCell = document.getElementById(`awayI${i + 1}`);
+    const nextHome = state.inningScores.home[i] ?? 0;
+    const nextAway = state.inningScores.away[i] ?? 0;
+    const prevHome = prev?.inningScores?.home?.[i];
+    const prevAway = prev?.inningScores?.away?.[i];
+    updateTextWithPulse(homeCell, nextHome, prevHome);
+    updateTextWithPulse(awayCell, nextAway, prevAway);
   }
 
   const awayBatter = findPlayerById(state.players?.away, state.currentBatterAwayId);
   const homeBatter = findPlayerById(state.players?.home, state.currentBatterHomeId);
+  const prevAwayBatter = findPlayerById(prev?.players?.away, prev?.currentBatterAwayId);
+  const prevHomeBatter = findPlayerById(prev?.players?.home, prev?.currentBatterHomeId);
 
-  els.awayBatterName.textContent = awayBatter?.name || '-';
-  els.homeBatterName.textContent = homeBatter?.name || '-';
-  els.awayBatterLine.textContent = battingLine(awayBatter);
-  els.homeBatterLine.textContent = battingLine(homeBatter);
+  updateTextWithPulse(els.awayBatterName, awayBatter?.name || '-', prevAwayBatter?.name);
+  updateTextWithPulse(els.homeBatterName, homeBatter?.name || '-', prevHomeBatter?.name);
+  updateTextWithPulse(els.awayBatterLine, battingLine(awayBatter), battingLine(prevAwayBatter));
+  updateTextWithPulse(els.homeBatterLine, battingLine(homeBatter), battingLine(prevHomeBatter));
 
   document.getElementById('awayBatterCard').style.outline = state.battingSide === 'away' ? '2px solid rgba(46, 242, 198, 0.8)' : 'none';
   document.getElementById('homeBatterCard').style.outline = state.battingSide === 'home' ? '2px solid rgba(46, 242, 198, 0.8)' : 'none';
 
+  stateCache.prevState = cloneState(state);
+  stateCache.prevMatchName = match.name || 'PARTITA';
   stateCache.lastJson = JSON.stringify(root);
 }
 

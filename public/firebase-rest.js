@@ -40,8 +40,17 @@ function createDefaultSettings() {
   return {
     autoSortRosterByNumber: true,
     autoAdvanceBatters: true,
+    showBallsStrikes: true,
     showBatterStrip: true,
     compactOverlay: false,
+  };
+}
+
+function createDefaultBaseRunners() {
+  return {
+    first: false,
+    second: false,
+    third: false,
   };
 }
 
@@ -63,6 +72,7 @@ function createDefaultState() {
     awayHits: 0,
     homeErrors: 0,
     awayErrors: 0,
+    baseRunners: createDefaultBaseRunners(),
     inningScores: {
       home: [0, 0, 0, 0, 0, 0, 0, 0, 0],
       away: [0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -127,8 +137,18 @@ function sanitizeSettings(input = {}) {
   return {
     autoSortRosterByNumber: Boolean(input.autoSortRosterByNumber ?? defaultSettings.autoSortRosterByNumber),
     autoAdvanceBatters: Boolean(input.autoAdvanceBatters ?? defaultSettings.autoAdvanceBatters),
+    showBallsStrikes: Boolean(input.showBallsStrikes ?? defaultSettings.showBallsStrikes),
     showBatterStrip: Boolean(input.showBatterStrip ?? defaultSettings.showBatterStrip),
     compactOverlay: Boolean(input.compactOverlay ?? defaultSettings.compactOverlay),
+  };
+}
+
+function sanitizeBaseRunners(input = {}) {
+  const defaults = createDefaultBaseRunners();
+  return {
+    first: Boolean(input.first ?? defaults.first),
+    second: Boolean(input.second ?? defaults.second),
+    third: Boolean(input.third ?? defaults.third),
   };
 }
 
@@ -177,6 +197,167 @@ function withAdvancedBatter(state, side) {
   return nextState;
 }
 
+function currentInningIndex(state) {
+  return clamp(Math.round(Number(state.inning || 1)) - 1, 0, 8);
+}
+
+function addRuns(state, side, runs) {
+  const scored = Math.max(0, Math.round(Number(runs || 0)));
+  if (!scored) {
+    return;
+  }
+
+  const inningIndex = currentInningIndex(state);
+  if (side === 'home') {
+    state.homeRuns = clamp((state.homeRuns || 0) + scored, 0, 99);
+    state.inningScores.home[inningIndex] = clamp((state.inningScores.home[inningIndex] || 0) + scored, 0, 99);
+  } else {
+    state.awayRuns = clamp((state.awayRuns || 0) + scored, 0, 99);
+    state.inningScores.away[inningIndex] = clamp((state.inningScores.away[inningIndex] || 0) + scored, 0, 99);
+  }
+}
+
+function changeHalfInning(state) {
+  const nextHalf = state.half === 'top' ? 'bottom' : 'top';
+  state.half = nextHalf;
+  if (nextHalf === 'top') {
+    state.inning = clamp((state.inning || 1) + 1, 1, 9);
+  }
+  state.battingSide = nextHalf === 'top' ? 'away' : 'home';
+  state.outs = 0;
+  state.balls = 0;
+  state.strikes = 0;
+  state.baseRunners = createDefaultBaseRunners();
+}
+
+function addOut(state, count = 1) {
+  let remaining = Math.max(0, Math.round(Number(count || 0)));
+  while (remaining > 0) {
+    state.outs += 1;
+    if (state.outs >= 3) {
+      changeHalfInning(state);
+      break;
+    }
+    remaining -= 1;
+  }
+}
+
+function advanceRunnersByHit(baseRunners, hitBases) {
+  const next = createDefaultBaseRunners();
+  let runs = 0;
+
+  if (baseRunners.third) {
+    if (hitBases >= 1) {
+      runs += 1;
+    } else {
+      next.third = true;
+    }
+  }
+
+  if (baseRunners.second) {
+    if (hitBases >= 2) {
+      runs += 1;
+    } else if (hitBases === 1) {
+      next.third = true;
+    }
+  }
+
+  if (baseRunners.first) {
+    if (hitBases >= 3) {
+      runs += 1;
+    } else if (hitBases === 2) {
+      next.third = true;
+    } else if (hitBases === 1) {
+      next.second = true;
+    }
+  }
+
+  if (hitBases === 1) {
+    next.first = true;
+  } else if (hitBases === 2) {
+    next.second = true;
+  } else if (hitBases === 3) {
+    next.third = true;
+  } else if (hitBases >= 4) {
+    runs += 1;
+  }
+
+  return { next, runs };
+}
+
+function advanceRunnersByWalk(baseRunners) {
+  const next = {
+    first: baseRunners.first,
+    second: baseRunners.second,
+    third: baseRunners.third,
+  };
+  let runs = 0;
+
+  if (!baseRunners.first) {
+    next.first = true;
+    return { next, runs };
+  }
+
+  if (baseRunners.first && baseRunners.second && baseRunners.third) {
+    runs += 1;
+  }
+
+  if (baseRunners.first && baseRunners.second) {
+    next.third = true;
+  }
+
+  if (baseRunners.first) {
+    next.second = true;
+  }
+
+  next.first = true;
+  return { next, runs };
+}
+
+function applyAutomaticCountRules(state, side) {
+  const nextState = clone(state);
+  const players = side === 'home' ? nextState.players.home : nextState.players.away;
+  const currentId = side === 'home' ? nextState.currentBatterHomeId : nextState.currentBatterAwayId;
+  const currentIndex = getPlayerIndex(players, currentId) >= 0 ? getPlayerIndex(players, currentId) : 0;
+  const batter = players[currentIndex];
+
+  if (nextState.balls >= 4) {
+    if (batter) {
+      batter.bb = clamp((batter.bb || 0) + 1, 0, 99);
+    }
+    const walkResult = advanceRunnersByWalk(nextState.baseRunners || createDefaultBaseRunners());
+    nextState.baseRunners = walkResult.next;
+    addRuns(nextState, side, walkResult.runs);
+    if (batter) {
+      batter.rbi = clamp((batter.rbi || 0) + walkResult.runs, 0, 99);
+    }
+    nextState.balls = 0;
+    nextState.strikes = 0;
+    if (nextState.settings?.autoAdvanceBatters) {
+      return withAdvancedBatter(nextState, side);
+    }
+  }
+
+  if (nextState.strikes >= 3) {
+    if (batter) {
+      batter.ab = clamp((batter.ab || 0) + 1, 0, 99);
+      batter.so = clamp((batter.so || 0) + 1, 0, 99);
+    }
+    nextState.balls = 0;
+    nextState.strikes = 0;
+    addOut(nextState, 1);
+    if (nextState.settings?.autoAdvanceBatters) {
+      return withAdvancedBatter(nextState, side);
+    }
+  }
+
+  if (nextState.outs >= 3) {
+    changeHalfInning(nextState);
+  }
+
+  return nextState;
+}
+
 function applyPlateAppearance(state, side, result) {
   const nextState = clone(state);
   const isHome = side === 'home';
@@ -192,34 +373,60 @@ function applyPlateAppearance(state, side, result) {
   if (result === 'single') {
     batter.ab += 1;
     batter.h += 1;
+    const runners = advanceRunnersByHit(nextState.baseRunners || createDefaultBaseRunners(), 1);
+    nextState.baseRunners = runners.next;
+    addRuns(nextState, side, runners.runs);
+    batter.rbi = clamp((batter.rbi || 0) + runners.runs, 0, 99);
+    nextState.balls = 0;
+    nextState.strikes = 0;
     if (isHome) nextState.homeHits += 1; else nextState.awayHits += 1;
   } else if (result === 'double') {
     batter.ab += 1;
     batter.h += 1;
     batter.doubles += 1;
+    const runners = advanceRunnersByHit(nextState.baseRunners || createDefaultBaseRunners(), 2);
+    nextState.baseRunners = runners.next;
+    addRuns(nextState, side, runners.runs);
+    batter.rbi = clamp((batter.rbi || 0) + runners.runs, 0, 99);
+    nextState.balls = 0;
+    nextState.strikes = 0;
     if (isHome) nextState.homeHits += 1; else nextState.awayHits += 1;
   } else if (result === 'triple') {
     batter.ab += 1;
     batter.h += 1;
     batter.triples += 1;
+    const runners = advanceRunnersByHit(nextState.baseRunners || createDefaultBaseRunners(), 3);
+    nextState.baseRunners = runners.next;
+    addRuns(nextState, side, runners.runs);
+    batter.rbi = clamp((batter.rbi || 0) + runners.runs, 0, 99);
+    nextState.balls = 0;
+    nextState.strikes = 0;
     if (isHome) nextState.homeHits += 1; else nextState.awayHits += 1;
   } else if (result === 'homeRun') {
     batter.ab += 1;
     batter.h += 1;
     batter.hr += 1;
-    if (isHome) {
-      nextState.homeHits += 1;
-      nextState.homeRuns += 1;
-    } else {
-      nextState.awayHits += 1;
-      nextState.awayRuns += 1;
-    }
+    const runners = advanceRunnersByHit(nextState.baseRunners || createDefaultBaseRunners(), 4);
+    nextState.baseRunners = runners.next;
+    addRuns(nextState, side, runners.runs);
+    batter.rbi = clamp((batter.rbi || 0) + runners.runs, 0, 99);
+    nextState.balls = 0;
+    nextState.strikes = 0;
+    if (isHome) nextState.homeHits += 1; else nextState.awayHits += 1;
   } else if (result === 'walk') {
     batter.bb += 1;
+    const runners = advanceRunnersByWalk(nextState.baseRunners || createDefaultBaseRunners());
+    nextState.baseRunners = runners.next;
+    addRuns(nextState, side, runners.runs);
+    batter.rbi = clamp((batter.rbi || 0) + runners.runs, 0, 99);
+    nextState.balls = 0;
+    nextState.strikes = 0;
   } else if (result === 'out') {
     batter.ab += 1;
     batter.so += 1;
-    nextState.outs = clamp(nextState.outs + 1, 0, 2);
+    addOut(nextState, 1);
+    nextState.balls = 0;
+    nextState.strikes = 0;
   }
 
   const nextSettings = nextState.settings || createDefaultSettings();
@@ -241,20 +448,25 @@ function sanitizeState(input = {}) {
   const homeCurrentPlayer = homePlayers[homeCurrentIndex] || homePlayers[0];
   const awayCurrentPlayer = awayPlayers[awayCurrentIndex] || awayPlayers[0];
 
+  const rawOuts = Math.max(0, Math.round(Number(input.outs ?? 0) || 0));
+  const rawBalls = Math.max(0, Math.round(Number(input.balls ?? 0) || 0));
+  const rawStrikes = Math.max(0, Math.round(Number(input.strikes ?? 0) || 0));
+
   const state = {
     homeTeam: String(input.homeTeam ?? 'HOME').slice(0, 16).toUpperCase(),
     awayTeam: String(input.awayTeam ?? 'AWAY').slice(0, 16).toUpperCase(),
     inning: clamp(Math.round(Number(input.inning ?? 1) || 1), 1, 9),
     half: input.half === 'bottom' ? 'bottom' : 'top',
-    balls: clamp(Math.round(Number(input.balls ?? 0) || 0), 0, 3),
-    strikes: clamp(Math.round(Number(input.strikes ?? 0) || 0), 0, 2),
-    outs: clamp(Math.round(Number(input.outs ?? 0) || 0), 0, 2),
+    balls: clamp(rawBalls, 0, 4),
+    strikes: clamp(rawStrikes, 0, 3),
+    outs: clamp(rawOuts, 0, 3),
     homeRuns: clamp(Math.round(Number(input.homeRuns ?? 0) || 0), 0, 99),
     awayRuns: clamp(Math.round(Number(input.awayRuns ?? 0) || 0), 0, 99),
     homeHits: clamp(Math.round(Number(input.homeHits ?? 0) || 0), 0, 99),
     awayHits: clamp(Math.round(Number(input.awayHits ?? 0) || 0), 0, 99),
     homeErrors: clamp(Math.round(Number(input.homeErrors ?? 0) || 0), 0, 99),
     awayErrors: clamp(Math.round(Number(input.awayErrors ?? 0) || 0), 0, 99),
+    baseRunners: sanitizeBaseRunners(input.baseRunners),
     inningScores: {
       home: homeInnings,
       away: awayInnings,
@@ -277,8 +489,13 @@ function sanitizeState(input = {}) {
 
   state.homeRuns = state.homeRuns || homeTotal;
   state.awayRuns = state.awayRuns || awayTotal;
+  const autoAdjusted = applyAutomaticCountRules(state, state.battingSide);
+  autoAdjusted.outs = clamp(Math.round(Number(autoAdjusted.outs || 0)), 0, 2);
+  autoAdjusted.balls = clamp(Math.round(Number(autoAdjusted.balls || 0)), 0, 3);
+  autoAdjusted.strikes = clamp(Math.round(Number(autoAdjusted.strikes || 0)), 0, 2);
+  autoAdjusted.baseRunners = sanitizeBaseRunners(autoAdjusted.baseRunners);
 
-  return state;
+  return autoAdjusted;
 }
 
 function sanitizeMatch(input = {}, fallbackName = 'Partita') {

@@ -21,8 +21,13 @@ const resetCountBtn = document.getElementById('resetCountBtn');
 const nextHalfBtn = document.getElementById('nextHalfBtn');
 const autoAdvanceBattersInput = document.getElementById('autoAdvanceBattersInput');
 const autoSortRosterInput = document.getElementById('autoSortRosterInput');
+const showBallsStrikesInput = document.getElementById('showBallsStrikesInput');
 const showBatterStripInput = document.getElementById('showBatterStripInput');
 const compactOverlayInput = document.getElementById('compactOverlayInput');
+const firstBaseInput = document.getElementById('firstBaseInput');
+const secondBaseInput = document.getElementById('secondBaseInput');
+const thirdBaseInput = document.getElementById('thirdBaseInput');
+const clearBasesBtn = document.getElementById('clearBasesBtn');
 const nextBatterBtn = document.getElementById('nextBatterBtn');
 const singleBtn = document.getElementById('singleBtn');
 const doubleBtn = document.getElementById('doubleBtn');
@@ -36,6 +41,7 @@ let currentMatchId = '';
 let role = 'viewer';
 let autoSaveTimer = null;
 let lastSavedJson = '';
+let isFormDirty = false;
 
 const refs = {
   awayTeam: document.getElementById('awayTeamInput'),
@@ -139,8 +145,8 @@ function rosterGridHtml(prefix) {
     ${Array.from({ length: 9 }, (_, index) => index)
       .map((index) => `
         <input id="${prefix}Number${index}" type="number" min="0" max="99" />
-        <input id="${prefix}Name${index}" maxlength="30" />
-        <input id="${prefix}Pos${index}" maxlength="6" />
+        <input id="${prefix}Name${index}" maxlength="30" placeholder="Nome giocatore" />
+        <input id="${prefix}Pos${index}" maxlength="6" placeholder="POS" />
         <input id="${prefix}AB${index}" type="number" min="0" max="99" />
         <input id="${prefix}H${index}" type="number" min="0" max="99" />
         <input id="${prefix}2B${index}" type="number" min="0" max="99" />
@@ -184,6 +190,7 @@ function clampValue(value, min, max) {
 
 function quickAdjust(inputEl, delta, min, max) {
   inputEl.value = clampValue(num(inputEl.value, min) + delta, min, max);
+  isFormDirty = true;
   scheduleAutoSave();
 }
 
@@ -191,6 +198,7 @@ function getSettingsFromForm() {
   return {
     autoAdvanceBatters: autoAdvanceBattersInput.checked,
     autoSortRosterByNumber: autoSortRosterInput.checked,
+    showBallsStrikes: showBallsStrikesInput.checked,
     showBatterStrip: showBatterStripInput.checked,
     compactOverlay: compactOverlayInput.checked,
   };
@@ -262,8 +270,13 @@ function fillForm(match, root) {
 
   autoAdvanceBattersInput.checked = state.settings?.autoAdvanceBatters ?? true;
   autoSortRosterInput.checked = state.settings?.autoSortRosterByNumber ?? true;
+  showBallsStrikesInput.checked = state.settings?.showBallsStrikes ?? true;
   showBatterStripInput.checked = state.settings?.showBatterStrip ?? true;
   compactOverlayInput.checked = state.settings?.compactOverlay ?? false;
+
+  firstBaseInput.checked = Boolean(state.baseRunners?.first);
+  secondBaseInput.checked = Boolean(state.baseRunners?.second);
+  thirdBaseInput.checked = Boolean(state.baseRunners?.third);
 
   for (let index = 0; index < 9; index += 1) {
     document.getElementById(`awayInning${index}`).value = state.inningScores.away[index] ?? 0;
@@ -319,6 +332,11 @@ function collectState() {
     currentBatterAwayId: currentBatterAwayInput.value,
     currentBatterHomeId: currentBatterHomeInput.value,
     settings: getSettingsFromForm(),
+    baseRunners: {
+      first: firstBaseInput.checked,
+      second: secondBaseInput.checked,
+      third: thirdBaseInput.checked,
+    },
     inningScores: {
       away: Array.from({ length: 9 }, (_, index) => num(document.getElementById(`awayInning${index}`).value)),
       home: Array.from({ length: 9 }, (_, index) => num(document.getElementById(`homeInning${index}`).value)),
@@ -335,6 +353,10 @@ async function refreshAdmin() {
     const root = await loadRoot();
     connStatus.textContent = 'online';
 
+    if (isFormDirty) {
+      return;
+    }
+
     const selectedMatch = root.matches[currentMatchId] || root.matches[root.activeMatchId] || Object.values(root.matches)[0];
     if (selectedMatch) {
       fillForm(selectedMatch, root);
@@ -346,6 +368,8 @@ async function refreshAdmin() {
 }
 
 function scheduleAutoSave() {
+  isFormDirty = true;
+
   if (!autoSaveInput.checked || role === 'viewer') {
     return;
   }
@@ -389,6 +413,7 @@ async function pushUpdate() {
       };
     });
 
+    isFormDirty = false;
     setFeedback('Aggiornato in Firebase ✔');
     await refreshAdmin();
   } catch (error) {
@@ -398,6 +423,7 @@ async function pushUpdate() {
 
 async function createNewMatch() {
   try {
+    isFormDirty = false;
     await createMatch(newMatchName.value || 'Nuova partita');
     newMatchName.value = '';
     setFeedback('Nuova partita creata ✔');
@@ -414,6 +440,7 @@ async function resetCurrentMatch() {
   }
 
   try {
+    isFormDirty = false;
     await resetMatch(currentMatchId);
     setFeedback('Reset eseguito ✔');
     await refreshAdmin();
@@ -436,6 +463,7 @@ async function saveSettingsOnly() {
         settings: getSettingsFromForm(),
       }),
     }));
+    isFormDirty = false;
     await refreshAdmin();
   } catch (error) {
     console.error(error);
@@ -462,6 +490,7 @@ async function advanceBatter(result = null) {
       };
     });
 
+    isFormDirty = false;
     await refreshAdmin();
     setFeedback(result ? `Azione registrata: ${result}` : 'Battitore avanzato ✔');
   } catch (error) {
@@ -473,9 +502,9 @@ saveBtn.addEventListener('click', pushUpdate);
 resetBtn.addEventListener('click', resetCurrentMatch);
 createMatchBtn.addEventListener('click', createNewMatch);
 changePinBtn.addEventListener('click', promptRole);
-plusBallBtn.addEventListener('click', () => quickAdjust(refs.balls, 1, 0, 3));
-plusStrikeBtn.addEventListener('click', () => quickAdjust(refs.strikes, 1, 0, 2));
-plusOutBtn.addEventListener('click', () => quickAdjust(refs.outs, 1, 0, 2));
+plusStrikeBtn.addEventListener('click', () => quickAdjust(refs.strikes, 1, 0, 3));
+plusOutBtn.addEventListener('click', () => quickAdjust(refs.outs, 1, 0, 3));
+plusBallBtn.addEventListener('click', () => quickAdjust(refs.balls, 1, 0, 4));
 resetCountBtn.addEventListener('click', () => {
   refs.balls.value = 0;
   refs.strikes.value = 0;
@@ -503,13 +532,26 @@ homeRunBtn.addEventListener('click', () => advanceBatter('homeRun'));
 walkBtn.addEventListener('click', () => advanceBatter('walk'));
 outBtn.addEventListener('click', () => advanceBatter('out'));
 
+clearBasesBtn.addEventListener('click', () => {
+  firstBaseInput.checked = false;
+  secondBaseInput.checked = false;
+  thirdBaseInput.checked = false;
+  scheduleAutoSave();
+});
+
 autoAdvanceBattersInput.addEventListener('change', saveSettingsOnly);
 autoSortRosterInput.addEventListener('change', saveSettingsOnly);
+showBallsStrikesInput.addEventListener('change', saveSettingsOnly);
 showBatterStripInput.addEventListener('change', saveSettingsOnly);
 compactOverlayInput.addEventListener('change', saveSettingsOnly);
 
+firstBaseInput.addEventListener('change', scheduleAutoSave);
+secondBaseInput.addEventListener('change', scheduleAutoSave);
+thirdBaseInput.addEventListener('change', scheduleAutoSave);
+
 matchSelect.addEventListener('change', async () => {
   currentMatchId = matchSelect.value;
+  isFormDirty = false;
   await updateActiveMatch(currentMatchId);
   await refreshAdmin();
 });

@@ -209,6 +209,15 @@ tbody td:last-child {
   padding: 14px 16px 8px;
 }
 
+.overlay-outs-only .count-boxes {
+  grid-template-columns: 1fr;
+}
+
+.overlay-outs-only .count-balls,
+.overlay-outs-only .count-strikes {
+  display: none;
+}
+
 .count {
   position: relative;
   overflow: hidden;
@@ -249,6 +258,170 @@ tbody td:last-child {
   font-size: clamp(1.7rem, 4vw, 2.5rem);
   line-height: 1;
   margin-top: 8px;
+  font-weight: 900;
+  color: #ffffff;
+  text-shadow: 0 0 18px rgba(255, 255, 255, 0.18);
+}
+
+.count-balls {
+  border-color: rgba(93, 214, 255, 0.28);
+}
+
+.count-strikes {
+  border-color: rgba(140, 125, 255, 0.34);
+}
+
+.count-outs {
+  border-color: rgba(255, 87, 117, 0.34);
+}
+
+.count-balls.level-1,
+.count-balls.level-2,
+.count-balls.level-3 {
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 0 0 1px rgba(93, 214, 255, 0.12);
+}
+
+.count-balls.level-2,
+.count-balls.level-3 {
+  background:
+    linear-gradient(180deg, rgba(93, 214, 255, 0.18), rgba(93, 214, 255, 0.06)),
+    rgba(12, 18, 33, 0.92);
+}
+
+.count-balls.level-3 {
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 0 24px rgba(93, 214, 255, 0.3);
+}
+
+.count-strikes.level-1,
+.count-strikes.level-2 {
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 0 0 1px rgba(140, 125, 255, 0.18);
+}
+
+.count-strikes.level-2 {
+  background:
+    linear-gradient(180deg, rgba(140, 125, 255, 0.24), rgba(140, 125, 255, 0.08)),
+    rgba(12, 18, 33, 0.92);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 0 24px rgba(140, 125, 255, 0.32);
+}
+
+.count-outs.level-1,
+.count-outs.level-2 {
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 0 0 1px rgba(255, 87, 117, 0.18);
+}
+
+.count-outs.level-2 {
+  background:
+    linear-gradient(180deg, rgba(255, 87, 117, 0.24), rgba(255, 87, 117, 0.08)),
+    rgba(12, 18, 33, 0.92);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 0 24px rgba(255, 87, 117, 0.32);
+}
+
+.bases-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 6px 16px 10px;
+}
+
+.bases-title {
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.8rem;
+}
+
+.bases-diamond {
+  position: relative;
+  width: 90px;
+  height: 68px;
+}
+
+.base {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  transform: rotate(45deg);
+  border: 1px solid rgba(255, 255, 255, 0.32);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.12);
+  transition: background 150ms ease, box-shadow 150ms ease, border-color 150ms ease;
+}
+
+.base.occupied {
+  background: linear-gradient(180deg, rgba(46, 242, 198, 0.95), rgba(93, 214, 255, 0.9));
+  border-color: rgba(255, 255, 255, 0.7);
+  box-shadow: 0 0 16px rgba(46, 242, 198, 0.6), inset 0 1px 0 rgba(255,255,255,0.5);
+}
+
+.base-second {
+  top: 0;
+  left: 36px;
+}
+
+.base-first {
+  top: 24px;
+  left: 58px;
+}
+
+.base-third {
+  top: 24px;
+  left: 14px;
+}
+
+.pulse-change {
+  animation: pulseChange 340ms ease-out;
+}
+
+.pulse-box {
+  animation: pulseBox 480ms ease-out;
+}
+
+.pulse-base {
+  animation: pulseBase 420ms ease-out;
+}
+
+@keyframes pulseChange {
+  0% {
+    transform: scale(1);
+    text-shadow: 0 0 0 rgba(255,255,255,0);
+  }
+  50% {
+    transform: scale(1.08);
+    text-shadow: 0 0 20px rgba(255,255,255,0.8);
+  }
+  100% {
+    transform: scale(1);
+    text-shadow: 0 0 0 rgba(255,255,255,0);
+  }
+}
+
+@keyframes pulseBox {
+  0% {
+    transform: scale(1);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
+  }
+  45% {
+    transform: scale(1.02);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 0 28px rgba(255,255,255,0.25);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes pulseBase {
+  0% {
+    transform: rotate(45deg) scale(1);
+  }
+  50% {
+    transform: rotate(45deg) scale(1.2);
+    box-shadow: 0 0 22px rgba(46, 242, 198, 0.8), inset 0 1px 0 rgba(255,255,255,0.6);
+  }
+  100% {
+    transform: rotate(45deg) scale(1);
+  }
 }
 
 .batter-strip {
@@ -300,8 +473,13 @@ tbody td:last-child {
 }
 
 .batter-card span {
-  color: #d9e8ff;
-  font-size: 0.88rem;
+  color: #c9d7f5;
+  font-size: 0.76rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .admin-body {

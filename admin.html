@@ -41,6 +41,7 @@
           <h2>Impostazioni utili</h2>
           <label><input type="checkbox" id="autoAdvanceBattersInput" checked /> Avanza automaticamente il battitore</label>
           <label><input type="checkbox" id="autoSortRosterInput" checked /> Ordina roster per numero/ordine lineup</label>
+          <label><input type="checkbox" id="showBallsStrikesInput" checked /> Mostra Balls/Strikes sull'overlay</label>
           <label><input type="checkbox" id="showBatterStripInput" checked /> Mostra riquadro battitori sull'overlay</label>
           <label><input type="checkbox" id="compactOverlayInput" /> Overlay compatto</label>
         </div>
@@ -117,9 +118,17 @@
 
         <div class="card">
           <h2>Count</h2>
-          <label>Balls (0-3)<input id="ballsInput" type="number" min="0" max="3" /></label>
-          <label>Strikes (0-2)<input id="strikesInput" type="number" min="0" max="2" /></label>
-          <label>Outs (0-2)<input id="outsInput" type="number" min="0" max="2" /></label>
+          <label>Balls (auto su 4)<input id="ballsInput" type="number" min="0" max="4" /></label>
+          <label>Strikes (auto su 3)<input id="strikesInput" type="number" min="0" max="3" /></label>
+          <label>Outs (auto su 3)<input id="outsInput" type="number" min="0" max="3" /></label>
+        </div>
+
+        <div class="card">
+          <h2>Uomini in base</h2>
+          <label><input type="checkbox" id="firstBaseInput" /> 1ª base occupata</label>
+          <label><input type="checkbox" id="secondBaseInput" /> 2ª base occupata</label>
+          <label><input type="checkbox" id="thirdBaseInput" /> 3ª base occupata</label>
+          <button id="clearBasesBtn" type="button">Svuota basi</button>
         </div>
 
         <div class="card">
