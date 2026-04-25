@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Baseball Scoreboard Overlay</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body class="overlay-body">
+    <main class="overlay" id="overlayRoot">
+      <header class="overlay-header">
+        <div class="status-wrap">
+          <div class="status" id="gameStatus">LIVE</div>
+          <div class="match-name" id="matchName">PARTITA</div>
+        </div>
+        <div class="inning" id="inningState">TOP 1</div>
+      </header>
+
+      <section class="line-score">
+        <table>
+          <thead>
+            <tr>
+              <th>TEAM</th>
+              <th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th><th>8</th><th>9</th>
+              <th>R</th><th>H</th><th>E</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td id="awayTeam">AWAY</td>
+              <td id="awayI1">0</td><td id="awayI2">0</td><td id="awayI3">0</td><td id="awayI4">0</td><td id="awayI5">0</td><td id="awayI6">0</td><td id="awayI7">0</td><td id="awayI8">0</td><td id="awayI9">0</td>
+              <td id="awayRuns">0</td><td id="awayHits">0</td><td id="awayErrors">0</td>
+            </tr>
+            <tr>
+              <td id="homeTeam">HOME</td>
+              <td id="homeI1">0</td><td id="homeI2">0</td><td id="homeI3">0</td><td id="homeI4">0</td><td id="homeI5">0</td><td id="homeI6">0</td><td id="homeI7">0</td><td id="homeI8">0</td><td id="homeI9">0</td>
+              <td id="homeRuns">0</td><td id="homeHits">0</td><td id="homeErrors">0</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="count-boxes">
+        <div class="count"><span>Balls</span><strong id="balls">0</strong></div>
+        <div class="count"><span>Strikes</span><strong id="strikes">0</strong></div>
+        <div class="count"><span>Outs</span><strong id="outs">0</strong></div>
+      </section>
+
+      <section class="batter-strip">
+        <div class="batter-card" id="awayBatterCard">
+          <small>AT BAT AWAY</small>
+          <strong id="awayBatterName">-</strong>
+          <span id="awayBatterLine">0-0</span>
+        </div>
+        <div class="batter-card" id="homeBatterCard">
+          <small>AT BAT HOME</small>
+          <strong id="homeBatterName">-</strong>
+          <span id="homeBatterLine">0-0</span>
+        </div>
+      </section>
+    </main>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/overlay.js"></script>
+  </body>
+</html>

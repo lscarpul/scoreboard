@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Admin Scoreboard</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body class="admin-body">
+    <main class="admin-layout">
+      <h1>Scoreboard Admin</h1>
+      <p class="subtitle">Aggiornamento live per OBS e tutti i dispositivi collegati.</p>
+
+      <section class="auth-banner card compact">
+        <div>
+          <strong>Connessione:</strong> <span id="connStatus">online</span>
+        </div>
+        <div>
+          <strong>Ruolo:</strong> <span id="roleStatus">-</span>
+        </div>
+        <button id="changePinBtn">Cambia PIN</button>
+      </section>
+
+      <section class="card compact quick-controls">
+        <h2>Controlli rapidi (telefono)</h2>
+        <div class="quick-grid">
+          <button id="plusBallBtn" type="button">+ Ball</button>
+          <button id="plusStrikeBtn" type="button">+ Strike</button>
+          <button id="plusOutBtn" type="button">+ Out</button>
+          <button id="resetCountBtn" type="button">Reset count</button>
+          <button id="nextHalfBtn" type="button">Cambio metà</button>
+        </div>
+        <label class="autosave-line">
+          <input type="checkbox" id="autoSaveInput" checked />
+          Auto-save (salva dopo 700ms)
+        </label>
+      </section>
+
+      <section class="grid top-grid">
+        <div class="card">
+          <h2>Partite</h2>
+          <label>Seleziona partita
+            <select id="matchSelect"></select>
+          </label>
+          <label>Nuova partita
+            <input id="newMatchName" maxlength="40" placeholder="Es: Gara 2 - Semifinale" />
+          </label>
+          <button id="createMatchBtn" class="primary">Crea nuova partita</button>
+        </div>
+
+        <div class="card">
+          <h2>Situazione battuta</h2>
+          <label>Team attualmente in battuta
+            <select id="battingSideInput">
+              <option value="away">Away</option>
+              <option value="home">Home</option>
+            </select>
+          </label>
+          <label>Battitore corrente Away
+            <select id="currentBatterAwayInput"></select>
+          </label>
+          <label>Battitore corrente Home
+            <select id="currentBatterHomeInput"></select>
+          </label>
+        </div>
+      </section>
+
+      <section class="grid">
+        <div class="card">
+          <h2>Team</h2>
+          <label>Team Ospite
+            <input id="awayTeamInput" maxlength="16" />
+          </label>
+          <label>Team Casa
+            <input id="homeTeamInput" maxlength="16" />
+          </label>
+          <label>Stato Match
+            <input id="gameStatusInput" maxlength="24" placeholder="LIVE / FINAL / DELAY" />
+          </label>
+        </div>
+
+        <div class="card">
+          <h2>Inning</h2>
+          <label>Numero Inning (1-9)
+            <input id="inningInput" type="number" min="1" max="9" />
+          </label>
+          <label>Metà
+            <select id="halfInput">
+              <option value="top">Top</option>
+              <option value="bottom">Bottom</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="card">
+          <h2>Count</h2>
+          <label>Balls (0-3)<input id="ballsInput" type="number" min="0" max="3" /></label>
+          <label>Strikes (0-2)<input id="strikesInput" type="number" min="0" max="2" /></label>
+          <label>Outs (0-2)<input id="outsInput" type="number" min="0" max="2" /></label>
+        </div>
+
+        <div class="card">
+          <h2>Totali</h2>
+          <div class="totals-row">
+            <span></span><strong>R</strong><strong>H</strong><strong>E</strong>
+          </div>
+          <div class="totals-row">
+            <span>AWAY</span>
+            <input id="awayRunsInput" type="number" min="0" max="99" />
+            <input id="awayHitsInput" type="number" min="0" max="99" />
+            <input id="awayErrorsInput" type="number" min="0" max="99" />
+          </div>
+          <div class="totals-row">
+            <span>HOME</span>
+            <input id="homeRunsInput" type="number" min="0" max="99" />
+            <input id="homeHitsInput" type="number" min="0" max="99" />
+            <input id="homeErrorsInput" type="number" min="0" max="99" />
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Runs per inning</h2>
+        <div id="inningsGrid" class="innings-grid"></div>
+      </section>
+
+      <section class="grid">
+        <div class="card">
+          <h2>Roster Away + statistiche live</h2>
+          <div id="awayRoster" class="roster-grid"></div>
+        </div>
+        <div class="card">
+          <h2>Roster Home + statistiche live</h2>
+          <div id="homeRoster" class="roster-grid"></div>
+        </div>
+      </section>
+
+      <section class="actions">
+        <button id="saveBtn" class="primary">Aggiorna live</button>
+        <button id="resetBtn" class="danger">Reset</button>
+        <span id="feedback"></span>
+      </section>
+    </main>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/admin.js"></script>
+  </body>
+</html>
