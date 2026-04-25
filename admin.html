@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Admin Scoreboard</title>
-    <link rel="stylesheet" href="/public/styles.css" />
+    <link rel="stylesheet" href="./public/styles.css" />
   </head>
   <body class="admin-body">
     <main class="admin-layout">
@@ -34,6 +34,29 @@
           <input type="checkbox" id="autoSaveInput" checked />
           Auto-save (salva dopo 700ms)
         </label>
+      </section>
+
+      <section class="grid top-grid">
+        <div class="card">
+          <h2>Impostazioni utili</h2>
+          <label><input type="checkbox" id="autoAdvanceBattersInput" checked /> Avanza automaticamente il battitore</label>
+          <label><input type="checkbox" id="autoSortRosterInput" checked /> Ordina roster per numero/ordine lineup</label>
+          <label><input type="checkbox" id="showBatterStripInput" checked /> Mostra riquadro battitori sull'overlay</label>
+          <label><input type="checkbox" id="compactOverlayInput" /> Overlay compatto</label>
+        </div>
+
+        <div class="card">
+          <h2>Azioni battuta</h2>
+          <div class="quick-grid">
+            <button id="nextBatterBtn" type="button">Prossimo battitore</button>
+            <button id="singleBtn" type="button">1B</button>
+            <button id="doubleBtn" type="button">2B</button>
+            <button id="tripleBtn" type="button">3B</button>
+            <button id="homeRunBtn" type="button">HR</button>
+            <button id="walkBtn" type="button">BB</button>
+            <button id="outBtn" type="button">Out</button>
+          </div>
+        </div>
       </section>
 
       <section class="grid top-grid">
@@ -142,8 +165,8 @@
       </section>
     </main>
 
-    <script src="/public/config.js"></script>
-    <script src="/public/firebase-rest.js"></script>
-    <script src="/public/admin.js"></script>
+    <script src="./public/config.js"></script>
+    <script src="./public/firebase-rest.js"></script>
+    <script src="./public/admin.js"></script>
   </body>
 </html>

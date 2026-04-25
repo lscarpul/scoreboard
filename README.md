@@ -28,6 +28,22 @@ Per test rapido puoi usare le regole di esempio in [firebase-rules.example.json]
 
 Poi, quando vuoi proteggere meglio il progetto, conviene passare a Firebase Auth e regole più restrittive.
 
+## Nuove impostazioni utili
+
+- `autoAdvanceBatters`: avanza il battitore dopo un evento plate appearance
+- `autoSortRosterByNumber`: mantiene il roster in ordine lineup
+- `showBatterStrip`: mostra o nasconde il box dei battitori nell'overlay
+- `compactOverlay`: versione più compatta per OBS
+
+## Battere automatico
+
+Nell'admin trovi anche i pulsanti per:
+
+- `Prossimo battitore`
+- `1B`, `2B`, `3B`, `HR`, `BB`, `Out`
+
+Così puoi tenere il battitore corrente sempre allineato con l'ordine di battuta.
+
 ## Pubblicazione su GitHub Pages
 
 1. Tieni nel repo la root con:

@@ -1,4 +1,3 @@
-const socket = io();
 const feedback = document.getElementById('feedback');
 const saveBtn = document.getElementById('saveBtn');
 const resetBtn = document.getElementById('resetBtn');
@@ -20,12 +19,23 @@ const plusStrikeBtn = document.getElementById('plusStrikeBtn');
 const plusOutBtn = document.getElementById('plusOutBtn');
 const resetCountBtn = document.getElementById('resetCountBtn');
 const nextHalfBtn = document.getElementById('nextHalfBtn');
+const autoAdvanceBattersInput = document.getElementById('autoAdvanceBattersInput');
+const autoSortRosterInput = document.getElementById('autoSortRosterInput');
+const showBatterStripInput = document.getElementById('showBatterStripInput');
+const compactOverlayInput = document.getElementById('compactOverlayInput');
+const nextBatterBtn = document.getElementById('nextBatterBtn');
+const singleBtn = document.getElementById('singleBtn');
+const doubleBtn = document.getElementById('doubleBtn');
+const tripleBtn = document.getElementById('tripleBtn');
+const homeRunBtn = document.getElementById('homeRunBtn');
+const walkBtn = document.getElementById('walkBtn');
+const outBtn = document.getElementById('outBtn');
 
-let currentState = null;
-let currentMatchId = null;
+let rootState = null;
+let currentMatchId = '';
 let role = 'viewer';
-let token = window.localStorage.getItem('scoreboard_auth_token') || '';
 let autoSaveTimer = null;
+let lastSavedJson = '';
 
 const refs = {
   awayTeam: document.getElementById('awayTeamInput'),
@@ -44,71 +54,35 @@ const refs = {
   homeErrors: document.getElementById('homeErrorsInput'),
 };
 
-function avgText(h, ab) {
-  if (!ab) {
+function avgText(hits, atBats) {
+  if (!atBats) {
     return '.000';
   }
-  return (h / ab).toFixed(3).replace('0.', '.');
+  return (hits / atBats).toFixed(3).replace('0.', '.');
+}
+
+function setFeedback(text, isError = false) {
+  feedback.textContent = text;
+  feedback.style.color = isError ? '#ff9aac' : '#b5c4e6';
 }
 
 function updateRoleUI() {
   roleStatus.textContent = role.toUpperCase();
 }
 
-function isWritableRole() {
-  return role === 'admin' || role === 'scorer';
-}
-
-function authPayload() {
-  return {
-    token,
-  };
-}
-
-function requestPinAndLogin() {
-  const typedPin = prompt('Inserisci PIN admin/scorer:') || '';
-  if (!typedPin) {
-    role = 'viewer';
-    token = '';
-    window.localStorage.removeItem('scoreboard_auth_token');
-    updateRoleUI();
-    setFeedback('PIN non inserito: accesso sola lettura', true);
-    return;
+function promptRole() {
+  const typed = prompt('Inserisci un PIN locale per sbloccare l\'editor (opzionale):') || '';
+  role = typed ? 'editor' : 'viewer';
+  updateRoleUI();
+  if (!typed) {
+    setFeedback('Modalità sola lettura attiva', true);
   }
-
-  socket.emit('auth:login', { pin: typedPin }, (response) => {
-    if (!response?.ok) {
-      role = 'viewer';
-      token = '';
-      window.localStorage.removeItem('scoreboard_auth_token');
-      updateRoleUI();
-      setFeedback(response?.error || 'Login fallito', true);
-      return;
-    }
-
-    role = response.role;
-    token = response.token;
-    window.localStorage.setItem('scoreboard_auth_token', token);
-    updateRoleUI();
-    setFeedback(`Login ok: ruolo ${role.toUpperCase()} ✔`);
-  });
-}
-
-function ensureLoggedIn() {
-  if (token) {
-    const tokenRole = token.split('.')[0];
-    role = tokenRole === 'admin' ? 'admin' : 'scorer';
-    updateRoleUI();
-    return;
-  }
-
-  requestPinAndLogin();
 }
 
 function createInningInputs() {
   inningsGrid.innerHTML = '';
+  const labels = ['INN', ...Array.from({ length: 9 }, (_, index) => String(index + 1))];
 
-  const labels = ['INN', ...Array.from({ length: 9 }, (_, i) => String(i + 1))];
   labels.forEach((label) => {
     const head = document.createElement('div');
     head.className = 'head';
@@ -121,13 +95,13 @@ function createInningInputs() {
   awayLabel.textContent = 'AWAY';
   inningsGrid.appendChild(awayLabel);
 
-  for (let i = 0; i < 9; i += 1) {
+  for (let index = 0; index < 9; index += 1) {
     const input = document.createElement('input');
     input.type = 'number';
     input.inputMode = 'numeric';
     input.min = '0';
     input.max = '99';
-    input.id = `awayInning${i}`;
+    input.id = `awayInning${index}`;
     inningsGrid.appendChild(input);
   }
 
@@ -136,18 +110,18 @@ function createInningInputs() {
   homeLabel.textContent = 'HOME';
   inningsGrid.appendChild(homeLabel);
 
-  for (let i = 0; i < 9; i += 1) {
+  for (let index = 0; index < 9; index += 1) {
     const input = document.createElement('input');
     input.type = 'number';
     input.inputMode = 'numeric';
     input.min = '0';
     input.max = '99';
-    input.id = `homeInning${i}`;
+    input.id = `homeInning${index}`;
     inningsGrid.appendChild(input);
   }
 }
 
-function rosterRowHtml(prefix, index) {
+function rosterGridHtml(prefix) {
   return `
     <div class="roster-head">#</div>
     <div class="roster-head">Nome</div>
@@ -162,119 +136,46 @@ function rosterRowHtml(prefix, index) {
     <div class="roster-head">RBI</div>
     <div class="roster-head">AVG</div>
 
-    ${Array.from({ length: 9 }, (_, i) => i + 1)
-      .map((rowNum) => {
-        const r = rowNum - 1;
-        return `
-          <input id="${prefix}Number${r}" type="number" min="0" max="99" />
-          <input id="${prefix}Name${r}" maxlength="30" />
-          <input id="${prefix}Pos${r}" maxlength="6" />
-          <input id="${prefix}AB${r}" type="number" min="0" max="99" />
-          <input id="${prefix}H${r}" type="number" min="0" max="99" />
-          <input id="${prefix}2B${r}" type="number" min="0" max="99" />
-          <input id="${prefix}3B${r}" type="number" min="0" max="99" />
-          <input id="${prefix}HR${r}" type="number" min="0" max="99" />
-          <input id="${prefix}BB${r}" type="number" min="0" max="99" />
-          <input id="${prefix}SO${r}" type="number" min="0" max="99" />
-          <input id="${prefix}RBI${r}" type="number" min="0" max="99" />
-          <div class="roster-avg" id="${prefix}AVG${r}">.000</div>
-        `;
-      })
+    ${Array.from({ length: 9 }, (_, index) => index)
+      .map((index) => `
+        <input id="${prefix}Number${index}" type="number" min="0" max="99" />
+        <input id="${prefix}Name${index}" maxlength="30" />
+        <input id="${prefix}Pos${index}" maxlength="6" />
+        <input id="${prefix}AB${index}" type="number" min="0" max="99" />
+        <input id="${prefix}H${index}" type="number" min="0" max="99" />
+        <input id="${prefix}2B${index}" type="number" min="0" max="99" />
+        <input id="${prefix}3B${index}" type="number" min="0" max="99" />
+        <input id="${prefix}HR${index}" type="number" min="0" max="99" />
+        <input id="${prefix}BB${index}" type="number" min="0" max="99" />
+        <input id="${prefix}SO${index}" type="number" min="0" max="99" />
+        <input id="${prefix}RBI${index}" type="number" min="0" max="99" />
+        <div class="roster-avg" id="${prefix}AVG${index}">.000</div>
+      `)
       .join('')}
   `;
 }
 
 function createRosterInputs() {
-  awayRoster.innerHTML = rosterRowHtml('away', 0);
-  homeRoster.innerHTML = rosterRowHtml('home', 0);
+  awayRoster.innerHTML = rosterGridHtml('away');
+  homeRoster.innerHTML = rosterGridHtml('home');
 
   ['away', 'home'].forEach((side) => {
-    for (let i = 0; i < 9; i += 1) {
-      const abEl = document.getElementById(`${side}AB${i}`);
-      const hEl = document.getElementById(`${side}H${i}`);
-      const avgEl = document.getElementById(`${side}AVG${i}`);
-
+    for (let index = 0; index < 9; index += 1) {
+      const abEl = document.getElementById(`${side}AB${index}`);
+      const hEl = document.getElementById(`${side}H${index}`);
+      const avgEl = document.getElementById(`${side}AVG${index}`);
       const refreshAvg = () => {
-        const ab = Number(abEl.value || 0);
-        const h = Number(hEl.value || 0);
-        avgEl.textContent = avgText(h, ab);
+        avgEl.textContent = avgText(Number(hEl.value || 0), Number(abEl.value || 0));
       };
-
       abEl.addEventListener('input', refreshAvg);
       hEl.addEventListener('input', refreshAvg);
     }
   });
 }
 
-function fillCurrentBatterSelect(selectEl, players, selectedId) {
-  const options = players
-    .map((p) => `<option value="${p.id}">${p.number}. ${p.name || 'SENZA NOME'} ${p.pos ? `(${p.pos})` : ''}</option>`)
-    .join('');
-
-  selectEl.innerHTML = options;
-  if (players.some((p) => p.id === selectedId)) {
-    selectEl.value = selectedId;
-  }
-}
-
-function fillRoster(prefix, players) {
-  for (let i = 0; i < 9; i += 1) {
-    const p = players[i] || {};
-    document.getElementById(`${prefix}Number${i}`).value = p.number ?? i + 1;
-    document.getElementById(`${prefix}Name${i}`).value = p.name ?? '';
-    document.getElementById(`${prefix}Pos${i}`).value = p.pos ?? '';
-    document.getElementById(`${prefix}AB${i}`).value = p.ab ?? 0;
-    document.getElementById(`${prefix}H${i}`).value = p.h ?? 0;
-    document.getElementById(`${prefix}2B${i}`).value = p.doubles ?? 0;
-    document.getElementById(`${prefix}3B${i}`).value = p.triples ?? 0;
-    document.getElementById(`${prefix}HR${i}`).value = p.hr ?? 0;
-    document.getElementById(`${prefix}BB${i}`).value = p.bb ?? 0;
-    document.getElementById(`${prefix}SO${i}`).value = p.so ?? 0;
-    document.getElementById(`${prefix}RBI${i}`).value = p.rbi ?? 0;
-    document.getElementById(`${prefix}AVG${i}`).textContent = avgText(p.h ?? 0, p.ab ?? 0);
-  }
-}
-
-function collectRoster(prefix, sourcePlayers) {
-  return Array.from({ length: 9 }, (_, i) => {
-    const source = sourcePlayers[i] || {};
-    return {
-      id: source.id,
-      number: num(document.getElementById(`${prefix}Number${i}`).value, i + 1),
-      name: document.getElementById(`${prefix}Name${i}`).value,
-      pos: document.getElementById(`${prefix}Pos${i}`).value,
-      ab: num(document.getElementById(`${prefix}AB${i}`).value),
-      h: num(document.getElementById(`${prefix}H${i}`).value),
-      doubles: num(document.getElementById(`${prefix}2B${i}`).value),
-      triples: num(document.getElementById(`${prefix}3B${i}`).value),
-      hr: num(document.getElementById(`${prefix}HR${i}`).value),
-      bb: num(document.getElementById(`${prefix}BB${i}`).value),
-      so: num(document.getElementById(`${prefix}SO${i}`).value),
-      rbi: num(document.getElementById(`${prefix}RBI${i}`).value),
-    };
-  });
-}
-
-function fillMatches(matches = [], activeId = null) {
-  matchSelect.innerHTML = matches
-    .map((m) => `<option value="${m.id}">${m.name}</option>`)
-    .join('');
-
-  if (activeId && matches.some((m) => m.id === activeId)) {
-    matchSelect.value = activeId;
-    currentMatchId = activeId;
-    return;
-  }
-
-  if (currentMatchId && matches.some((m) => m.id === currentMatchId)) {
-    matchSelect.value = currentMatchId;
-    return;
-  }
-
-  if (matches[0]) {
-    matchSelect.value = matches[0].id;
-    currentMatchId = matches[0].id;
-  }
+function num(value, fallback = 0) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
 }
 
 function clampValue(value, min, max) {
@@ -282,17 +183,67 @@ function clampValue(value, min, max) {
 }
 
 function quickAdjust(inputEl, delta, min, max) {
-  const current = num(inputEl.value, min);
-  inputEl.value = clampValue(current + delta, min, max);
+  inputEl.value = clampValue(num(inputEl.value, min) + delta, min, max);
+  scheduleAutoSave();
 }
 
-function fillForm(payload) {
-  const state = payload?.state || payload;
-  if (payload?.matchId) {
-    currentMatchId = payload.matchId;
-  }
+function getSettingsFromForm() {
+  return {
+    autoAdvanceBatters: autoAdvanceBattersInput.checked,
+    autoSortRosterByNumber: autoSortRosterInput.checked,
+    showBatterStrip: showBatterStripInput.checked,
+    compactOverlay: compactOverlayInput.checked,
+  };
+}
 
-  currentState = state;
+function fillMatches(root) {
+  const matches = Object.values(root.matches || {});
+  matchSelect.innerHTML = matches.map((match) => `<option value="${match.id}">${match.name}</option>`).join('');
+
+  if (matches.some((match) => match.id === currentMatchId)) {
+    matchSelect.value = currentMatchId;
+  } else if (root.activeMatchId) {
+    matchSelect.value = root.activeMatchId;
+    currentMatchId = root.activeMatchId;
+  } else if (matches[0]) {
+    currentMatchId = matches[0].id;
+    matchSelect.value = currentMatchId;
+  }
+}
+
+function fillRoster(prefix, players) {
+  for (let index = 0; index < 9; index += 1) {
+    const player = players[index] || {};
+    document.getElementById(`${prefix}Number${index}`).value = player.number ?? index + 1;
+    document.getElementById(`${prefix}Name${index}`).value = player.name ?? '';
+    document.getElementById(`${prefix}Pos${index}`).value = player.pos ?? '';
+    document.getElementById(`${prefix}AB${index}`).value = player.ab ?? 0;
+    document.getElementById(`${prefix}H${index}`).value = player.h ?? 0;
+    document.getElementById(`${prefix}2B${index}`).value = player.doubles ?? 0;
+    document.getElementById(`${prefix}3B${index}`).value = player.triples ?? 0;
+    document.getElementById(`${prefix}HR${index}`).value = player.hr ?? 0;
+    document.getElementById(`${prefix}BB${index}`).value = player.bb ?? 0;
+    document.getElementById(`${prefix}SO${index}`).value = player.so ?? 0;
+    document.getElementById(`${prefix}RBI${index}`).value = player.rbi ?? 0;
+    document.getElementById(`${prefix}AVG${index}`).textContent = avgText(player.h ?? 0, player.ab ?? 0);
+  }
+}
+
+function fillBatterSelect(selectEl, players, selectedId) {
+  selectEl.innerHTML = players
+    .map((player) => `<option value="${player.id}">${player.number}. ${player.name || 'SENZA NOME'} ${player.pos ? `(${player.pos})` : ''}</option>`)
+    .join('');
+
+  if (players.some((player) => player.id === selectedId)) {
+    selectEl.value = selectedId;
+  }
+}
+
+function fillForm(match, root) {
+  const state = match.state;
+  rootState = root;
+  currentMatchId = match.id;
+
   refs.awayTeam.value = state.awayTeam;
   refs.homeTeam.value = state.homeTeam;
   refs.gameStatus.value = state.gameStatus;
@@ -301,7 +252,6 @@ function fillForm(payload) {
   refs.balls.value = state.balls;
   refs.strikes.value = state.strikes;
   refs.outs.value = state.outs;
-
   refs.awayRuns.value = state.awayRuns;
   refs.awayHits.value = state.awayHits;
   refs.awayErrors.value = state.awayErrors;
@@ -310,31 +260,49 @@ function fillForm(payload) {
   refs.homeErrors.value = state.homeErrors;
   battingSideInput.value = state.battingSide || 'away';
 
-  for (let i = 0; i < 9; i += 1) {
-    document.getElementById(`awayInning${i}`).value = state.inningScores.away[i] ?? 0;
-    document.getElementById(`homeInning${i}`).value = state.inningScores.home[i] ?? 0;
+  autoAdvanceBattersInput.checked = state.settings?.autoAdvanceBatters ?? true;
+  autoSortRosterInput.checked = state.settings?.autoSortRosterByNumber ?? true;
+  showBatterStripInput.checked = state.settings?.showBatterStrip ?? true;
+  compactOverlayInput.checked = state.settings?.compactOverlay ?? false;
+
+  for (let index = 0; index < 9; index += 1) {
+    document.getElementById(`awayInning${index}`).value = state.inningScores.away[index] ?? 0;
+    document.getElementById(`homeInning${index}`).value = state.inningScores.home[index] ?? 0;
   }
 
   fillRoster('away', state.players?.away || []);
   fillRoster('home', state.players?.home || []);
-  fillCurrentBatterSelect(currentBatterAwayInput, state.players?.away || [], state.currentBatterAwayId);
-  fillCurrentBatterSelect(currentBatterHomeInput, state.players?.home || [], state.currentBatterHomeId);
+  fillBatterSelect(currentBatterAwayInput, state.players?.away || [], state.currentBatterAwayId);
+  fillBatterSelect(currentBatterHomeInput, state.players?.home || [], state.currentBatterHomeId);
+  fillMatches(root);
+
+  lastSavedJson = JSON.stringify({ root, matchId: currentMatchId });
 }
 
-function num(v, fallback = 0) {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : fallback;
+function collectRoster(prefix, sourcePlayers) {
+  return Array.from({ length: 9 }, (_, index) => ({
+    id: sourcePlayers[index]?.id,
+    number: num(document.getElementById(`${prefix}Number${index}`).value, index + 1),
+    name: document.getElementById(`${prefix}Name${index}`).value,
+    pos: document.getElementById(`${prefix}Pos${index}`).value,
+    ab: num(document.getElementById(`${prefix}AB${index}`).value),
+    h: num(document.getElementById(`${prefix}H${index}`).value),
+    doubles: num(document.getElementById(`${prefix}2B${index}`).value),
+    triples: num(document.getElementById(`${prefix}3B${index}`).value),
+    hr: num(document.getElementById(`${prefix}HR${index}`).value),
+    bb: num(document.getElementById(`${prefix}BB${index}`).value),
+    so: num(document.getElementById(`${prefix}SO${index}`).value),
+    rbi: num(document.getElementById(`${prefix}RBI${index}`).value),
+  }));
 }
 
 function collectState() {
-  const awayPlayers = collectRoster('away', currentState.players?.away || []);
-  const homePlayers = collectRoster('home', currentState.players?.home || []);
+  const awayPlayers = collectRoster('away', rootState?.matches?.[currentMatchId]?.state?.players?.away || []);
+  const homePlayers = collectRoster('home', rootState?.matches?.[currentMatchId]?.state?.players?.home || []);
 
   return {
-    ...currentState,
     awayTeam: refs.awayTeam.value,
     homeTeam: refs.homeTeam.value,
-    gameStatus: refs.gameStatus.value,
     inning: num(refs.inning.value, 1),
     half: refs.half.value,
     balls: num(refs.balls.value),
@@ -346,12 +314,14 @@ function collectState() {
     homeRuns: num(refs.homeRuns.value),
     homeHits: num(refs.homeHits.value),
     homeErrors: num(refs.homeErrors.value),
+    gameStatus: refs.gameStatus.value,
     battingSide: battingSideInput.value,
     currentBatterAwayId: currentBatterAwayInput.value,
     currentBatterHomeId: currentBatterHomeInput.value,
+    settings: getSettingsFromForm(),
     inningScores: {
-      away: Array.from({ length: 9 }, (_, i) => num(document.getElementById(`awayInning${i}`).value)),
-      home: Array.from({ length: 9 }, (_, i) => num(document.getElementById(`homeInning${i}`).value)),
+      away: Array.from({ length: 9 }, (_, index) => num(document.getElementById(`awayInning${index}`).value)),
+      home: Array.from({ length: 9 }, (_, index) => num(document.getElementById(`homeInning${index}`).value)),
     },
     players: {
       away: awayPlayers,
@@ -360,41 +330,23 @@ function collectState() {
   };
 }
 
-function setFeedback(text, isError = false) {
-  feedback.textContent = text;
-  feedback.style.color = isError ? '#ff9aac' : '#b5c4e6';
-}
+async function refreshAdmin() {
+  try {
+    const root = await loadRoot();
+    connStatus.textContent = 'online';
 
-function pushUpdate() {
-  if (!isWritableRole()) {
-    setFeedback('Ruolo viewer: modifica non consentita', true);
-    return;
-  }
-  if (!currentMatchId) {
-    setFeedback('Nessuna partita selezionata', true);
-    return;
-  }
-
-  const state = collectState();
-  socket.emit('scoreboard:update', { ...authPayload(), matchId: currentMatchId, state }, (response) => {
-    if (!response?.ok) {
-      if ((response?.error || '').toLowerCase().includes('pin')) {
-        role = 'viewer';
-        token = '';
-        window.localStorage.removeItem('scoreboard_auth_token');
-        updateRoleUI();
-      }
-      setFeedback(response?.error || 'Errore aggiornamento', true);
-      return;
+    const selectedMatch = root.matches[currentMatchId] || root.matches[root.activeMatchId] || Object.values(root.matches)[0];
+    if (selectedMatch) {
+      fillForm(selectedMatch, root);
     }
-    role = response.role || role;
-    updateRoleUI();
-    setFeedback('Aggiornato in diretta ✔');
-  });
+  } catch (error) {
+    connStatus.textContent = 'offline';
+    console.error(error);
+  }
 }
 
 function scheduleAutoSave() {
-  if (!autoSaveInput.checked || !isWritableRole()) {
+  if (!autoSaveInput.checked || role === 'viewer') {
     return;
   }
 
@@ -407,72 +359,129 @@ function scheduleAutoSave() {
   }, 700);
 }
 
-saveBtn.addEventListener('click', () => {
-  pushUpdate();
-});
+async function updateActiveMatch(matchId) {
+  const root = await loadRoot();
+  root.activeMatchId = matchId;
+  await saveRoot(root);
+}
 
-resetBtn.addEventListener('click', () => {
+async function pushUpdate() {
+  if (role === 'viewer') {
+    setFeedback('Modalità sola lettura', true);
+    return;
+  }
+
   if (!currentMatchId) {
     setFeedback('Nessuna partita selezionata', true);
     return;
   }
 
-  if (!isWritableRole()) {
-    setFeedback('Ruolo viewer: reset non consentito', true);
+  try {
+    await updateMatch(currentMatchId, (currentMatch) => {
+      const nextState = sanitizeState({
+        ...currentMatch.state,
+        ...collectState(),
+      });
+      return {
+        ...currentMatch,
+        updatedAt: nowIso(),
+        state: nextState,
+      };
+    });
+
+    setFeedback('Aggiornato in Firebase ✔');
+    await refreshAdmin();
+  } catch (error) {
+    setFeedback(error.message || 'Errore aggiornamento', true);
+  }
+}
+
+async function createNewMatch() {
+  try {
+    await createMatch(newMatchName.value || 'Nuova partita');
+    newMatchName.value = '';
+    setFeedback('Nuova partita creata ✔');
+    await refreshAdmin();
+  } catch (error) {
+    setFeedback(error.message || 'Errore creazione partita', true);
+  }
+}
+
+async function resetCurrentMatch() {
+  if (!currentMatchId) {
+    setFeedback('Nessuna partita selezionata', true);
     return;
   }
 
-  socket.emit('scoreboard:reset', { ...authPayload(), matchId: currentMatchId }, (response) => {
-    if (!response?.ok) {
-      setFeedback(response?.error || 'Errore reset', true);
-      return;
-    }
+  try {
+    await resetMatch(currentMatchId);
     setFeedback('Reset eseguito ✔');
-  });
-});
+    await refreshAdmin();
+  } catch (error) {
+    setFeedback(error.message || 'Errore reset', true);
+  }
+}
 
-createMatchBtn.addEventListener('click', () => {
-  socket.emit('scoreboard:createMatch', { ...authPayload(), name: newMatchName.value }, (response) => {
-    if (!response?.ok) {
-      setFeedback(response?.error || 'Errore creazione partita', true);
-      return;
-    }
+async function saveSettingsOnly() {
+  if (!currentMatchId) {
+    return;
+  }
 
-    setFeedback('Nuova partita creata ✔');
-    newMatchName.value = '';
-    if (response.match?.id) {
-      currentMatchId = response.match.id;
-      socket.emit('scoreboard:subscribe', { matchId: currentMatchId }, () => {});
-    }
-  });
-});
+  try {
+    await updateMatch(currentMatchId, (currentMatch) => ({
+      ...currentMatch,
+      updatedAt: nowIso(),
+      state: sanitizeState({
+        ...currentMatch.state,
+        settings: getSettingsFromForm(),
+      }),
+    }));
+    await refreshAdmin();
+  } catch (error) {
+    console.error(error);
+  }
+}
 
-changePinBtn.addEventListener('click', () => {
-  requestPinAndLogin();
-});
+async function advanceBatter(result = null) {
+  if (!currentMatchId) {
+    return;
+  }
 
-plusBallBtn.addEventListener('click', () => {
-  quickAdjust(refs.balls, 1, 0, 3);
-  scheduleAutoSave();
-});
+  try {
+    await updateMatch(currentMatchId, (currentMatch) => {
+      const baseState = sanitizeState({
+        ...currentMatch.state,
+        ...collectState(),
+      });
+      const side = baseState.battingSide;
+      const nextState = result ? applyPlateAppearance(baseState, side, result) : withAdvancedBatter(baseState, side);
+      return {
+        ...currentMatch,
+        updatedAt: nowIso(),
+        state: sanitizeState(nextState),
+      };
+    });
 
-plusStrikeBtn.addEventListener('click', () => {
-  quickAdjust(refs.strikes, 1, 0, 2);
-  scheduleAutoSave();
-});
+    await refreshAdmin();
+    setFeedback(result ? `Azione registrata: ${result}` : 'Battitore avanzato ✔');
+  } catch (error) {
+    setFeedback(error.message || 'Errore azione battitore', true);
+  }
+}
 
-plusOutBtn.addEventListener('click', () => {
-  quickAdjust(refs.outs, 1, 0, 2);
-  scheduleAutoSave();
-});
-
+saveBtn.addEventListener('click', pushUpdate);
+resetBtn.addEventListener('click', resetCurrentMatch);
+createMatchBtn.addEventListener('click', createNewMatch);
+changePinBtn.addEventListener('click', promptRole);
+plusBallBtn.addEventListener('click', () => quickAdjust(refs.balls, 1, 0, 3));
+plusStrikeBtn.addEventListener('click', () => quickAdjust(refs.strikes, 1, 0, 2));
+plusOutBtn.addEventListener('click', () => quickAdjust(refs.outs, 1, 0, 2));
 resetCountBtn.addEventListener('click', () => {
   refs.balls.value = 0;
   refs.strikes.value = 0;
   refs.outs.value = 0;
   scheduleAutoSave();
 });
-
 nextHalfBtn.addEventListener('click', () => {
   const half = refs.half.value === 'top' ? 'bottom' : 'top';
   refs.half.value = half;
@@ -486,6 +495,29 @@ nextHalfBtn.addEventListener('click', () => {
   scheduleAutoSave();
 });
 
+nextBatterBtn.addEventListener('click', () => advanceBatter());
+singleBtn.addEventListener('click', () => advanceBatter('single'));
+doubleBtn.addEventListener('click', () => advanceBatter('double'));
+tripleBtn.addEventListener('click', () => advanceBatter('triple'));
+homeRunBtn.addEventListener('click', () => advanceBatter('homeRun'));
+walkBtn.addEventListener('click', () => advanceBatter('walk'));
+outBtn.addEventListener('click', () => advanceBatter('out'));
+
+autoAdvanceBattersInput.addEventListener('change', saveSettingsOnly);
+autoSortRosterInput.addEventListener('change', saveSettingsOnly);
+showBatterStripInput.addEventListener('change', saveSettingsOnly);
+compactOverlayInput.addEventListener('change', saveSettingsOnly);
+
+matchSelect.addEventListener('change', async () => {
+  currentMatchId = matchSelect.value;
+  await updateActiveMatch(currentMatchId);
+  await refreshAdmin();
+});
+
+currentBatterAwayInput.addEventListener('change', scheduleAutoSave);
+currentBatterHomeInput.addEventListener('change', scheduleAutoSave);
+battingSideInput.addEventListener('change', scheduleAutoSave);
+
 document.addEventListener('input', (event) => {
   if (!(event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement)) {
     return;
@@ -498,36 +530,8 @@ document.addEventListener('input', (event) => {
   scheduleAutoSave();
 });
 
-socket.on('connect', () => {
-  connStatus.textContent = 'online';
-  ensureLoggedIn();
-});
-
-socket.on('disconnect', () => {
-  connStatus.textContent = 'offline';
-});
-
-matchSelect.addEventListener('change', () => {
-  const nextId = matchSelect.value;
-  if (!nextId) {
-    return;
-  }
-
-  socket.emit('scoreboard:subscribe', { matchId: nextId }, (response) => {
-    if (!response?.ok) {
-      setFeedback(response?.error || 'Errore cambio partita', true);
-      return;
-    }
-    currentMatchId = nextId;
-    setFeedback('Partita caricata ✔');
-  });
-});
-
 createInningInputs();
 createRosterInputs();
-updateRoleUI();
-
-socket.on('scoreboard:state', fillForm);
-socket.on('scoreboard:matches', (payload = {}) => {
-  fillMatches(payload.matches || [], payload.activeId || null);
-});
+promptRole();
+refreshAdmin();
+setInterval(refreshAdmin, POLL_INTERVAL_MS);

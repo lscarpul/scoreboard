@@ -67,6 +67,10 @@ body::before {
   position: relative;
 }
 
+.overlay.overlay-compact {
+  width: min(1180px, 94vw);
+}
+
 .overlay::after {
   content: '';
   position: absolute;
@@ -371,6 +375,21 @@ h1 {
   text-transform: uppercase;
   letter-spacing: 0.12em;
   color: #d7eaff;
+}
+
+.card label:has(input[type="checkbox"]) {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  color: #e6efff;
+}
+
+.card label:has(input[type="checkbox"]) input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--accent);
 }
 
 .card button {

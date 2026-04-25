@@ -36,6 +36,15 @@ function makeDefaultPlayers(teamCode) {
   return Array.from({ length: 9 }, (_, index) => makePlayer(index + 1, teamCode));
 }
 
+function createDefaultSettings() {
+  return {
+    autoSortRosterByNumber: true,
+    autoAdvanceBatters: true,
+    showBatterStrip: true,
+    compactOverlay: false,
+  };
+}
+
 function createDefaultState() {
   const homePlayers = makeDefaultPlayers('HOME');
   const awayPlayers = makeDefaultPlayers('AWAY');
@@ -60,8 +69,11 @@ function createDefaultState() {
     },
     gameStatus: 'LIVE',
     battingSide: 'away',
+    currentBatterAwayIndex: 0,
+    currentBatterHomeIndex: 0,
     currentBatterAwayId: awayPlayers[0].id,
     currentBatterHomeId: homePlayers[0].id,
+    settings: createDefaultSettings(),
     players: {
       home: homePlayers,
       away: awayPlayers,
@@ -99,15 +111,135 @@ function sanitizePlayer(input = {}, number = 0) {
   };
 }
 
-function sanitizePlayersArray(players = [], fallbackCode = 'TEAM') {
-  return Array.from({ length: 9 }, (_, index) => sanitizePlayer(players[index] || makePlayer(index + 1, fallbackCode), index + 1));
+function sortPlayersByLineup(players = []) {
+  return [...players].sort((left, right) => {
+    const leftNumber = Number(left.number ?? 0);
+    const rightNumber = Number(right.number ?? 0);
+    if (leftNumber !== rightNumber) {
+      return leftNumber - rightNumber;
+    }
+    return String(left.name || '').localeCompare(String(right.name || ''));
+  });
+}
+
+function sanitizeSettings(input = {}) {
+  const defaultSettings = createDefaultSettings();
+  return {
+    autoSortRosterByNumber: Boolean(input.autoSortRosterByNumber ?? defaultSettings.autoSortRosterByNumber),
+    autoAdvanceBatters: Boolean(input.autoAdvanceBatters ?? defaultSettings.autoAdvanceBatters),
+    showBatterStrip: Boolean(input.showBatterStrip ?? defaultSettings.showBatterStrip),
+    compactOverlay: Boolean(input.compactOverlay ?? defaultSettings.compactOverlay),
+  };
+}
+
+function sanitizePlayersArray(players = [], fallbackCode = 'TEAM', sortRoster = true) {
+  const sanitized = Array.from({ length: 9 }, (_, index) => sanitizePlayer(players[index] || makePlayer(index + 1, fallbackCode), index + 1));
+  return sortRoster ? sortPlayersByLineup(sanitized) : sanitized;
+}
+
+function getPlayerIndex(players = [], playerId = '') {
+  return players.findIndex((player) => player.id === playerId);
+}
+
+function getPlayerByIndex(players = [], index = 0) {
+  return players[(index + players.length) % players.length] || null;
+}
+
+function advanceBatterIndex(players = [], currentIndex = 0) {
+  if (!players.length) {
+    return 0;
+  }
+  return (currentIndex + 1) % players.length;
+}
+
+function currentBatterFromState(state, side) {
+  const players = side === 'home' ? state.players.home : state.players.away;
+  const currentId = side === 'home' ? state.currentBatterHomeId : state.currentBatterAwayId;
+  const currentIndex = getPlayerIndex(players, currentId);
+  const safeIndex = currentIndex >= 0 ? currentIndex : 0;
+  return { players, currentId, currentIndex: safeIndex };
+}
+
+function withAdvancedBatter(state, side) {
+  const nextState = clone(state);
+  const { players, currentIndex } = currentBatterFromState(nextState, side);
+  const nextIndex = advanceBatterIndex(players, currentIndex);
+  const nextPlayer = getPlayerByIndex(players, nextIndex);
+
+  if (side === 'home') {
+    nextState.currentBatterHomeIndex = nextIndex;
+    nextState.currentBatterHomeId = nextPlayer?.id || '';
+  } else {
+    nextState.currentBatterAwayIndex = nextIndex;
+    nextState.currentBatterAwayId = nextPlayer?.id || '';
+  }
+
+  return nextState;
+}
+
+function applyPlateAppearance(state, side, result) {
+  const nextState = clone(state);
+  const isHome = side === 'home';
+  const players = isHome ? nextState.players.home : nextState.players.away;
+  const currentId = isHome ? nextState.currentBatterHomeId : nextState.currentBatterAwayId;
+  const currentIndex = getPlayerIndex(players, currentId) >= 0 ? getPlayerIndex(players, currentId) : 0;
+  const batter = players[currentIndex];
+
+  if (!batter) {
+    return nextState;
+  }
+
+  if (result === 'single') {
+    batter.ab += 1;
+    batter.h += 1;
+    if (isHome) nextState.homeHits += 1; else nextState.awayHits += 1;
+  } else if (result === 'double') {
+    batter.ab += 1;
+    batter.h += 1;
+    batter.doubles += 1;
+    if (isHome) nextState.homeHits += 1; else nextState.awayHits += 1;
+  } else if (result === 'triple') {
+    batter.ab += 1;
+    batter.h += 1;
+    batter.triples += 1;
+    if (isHome) nextState.homeHits += 1; else nextState.awayHits += 1;
+  } else if (result === 'homeRun') {
+    batter.ab += 1;
+    batter.h += 1;
+    batter.hr += 1;
+    if (isHome) {
+      nextState.homeHits += 1;
+      nextState.homeRuns += 1;
+    } else {
+      nextState.awayHits += 1;
+      nextState.awayRuns += 1;
+    }
+  } else if (result === 'walk') {
+    batter.bb += 1;
+  } else if (result === 'out') {
+    batter.ab += 1;
+    batter.so += 1;
+    nextState.outs = clamp(nextState.outs + 1, 0, 2);
+  }
+
+  const nextSettings = nextState.settings || createDefaultSettings();
+  if (nextSettings.autoAdvanceBatters) {
+    return withAdvancedBatter(nextState, side);
+  }
+
+  return nextState;
 }
 
 function sanitizeState(input = {}) {
-  const homePlayers = sanitizePlayersArray(input.players?.home, 'HOME');
-  const awayPlayers = sanitizePlayersArray(input.players?.away, 'AWAY');
+  const settings = sanitizeSettings(input.settings);
+  const homePlayers = sanitizePlayersArray(input.players?.home, 'HOME', settings.autoSortRosterByNumber);
+  const awayPlayers = sanitizePlayersArray(input.players?.away, 'AWAY', settings.autoSortRosterByNumber);
   const homeInnings = normalizeInningArray(input.inningScores?.home);
   const awayInnings = normalizeInningArray(input.inningScores?.away);
+  const homeCurrentIndex = Math.max(0, getPlayerIndex(homePlayers, String(input.currentBatterHomeId || '')));
+  const awayCurrentIndex = Math.max(0, getPlayerIndex(awayPlayers, String(input.currentBatterAwayId || '')));
+  const homeCurrentPlayer = homePlayers[homeCurrentIndex] || homePlayers[0];
+  const awayCurrentPlayer = awayPlayers[awayCurrentIndex] || awayPlayers[0];
 
   const state = {
     homeTeam: String(input.homeTeam ?? 'HOME').slice(0, 16).toUpperCase(),
@@ -129,8 +261,11 @@ function sanitizeState(input = {}) {
     },
     gameStatus: String(input.gameStatus ?? 'LIVE').slice(0, 24).toUpperCase(),
     battingSide: input.battingSide === 'home' ? 'home' : 'away',
-    currentBatterAwayId: String(input.currentBatterAwayId || awayPlayers[0].id),
-    currentBatterHomeId: String(input.currentBatterHomeId || homePlayers[0].id),
+    currentBatterAwayIndex: awayCurrentIndex,
+    currentBatterHomeIndex: homeCurrentIndex,
+    currentBatterAwayId: awayCurrentPlayer?.id || awayPlayers[0].id,
+    currentBatterHomeId: homeCurrentPlayer?.id || homePlayers[0].id,
+    settings,
     players: {
       home: homePlayers,
       away: awayPlayers,

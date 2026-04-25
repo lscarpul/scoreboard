@@ -1,6 +1,5 @@
 const params = new URLSearchParams(window.location.search);
 const queryMatchId = params.get('matchId') || '';
-const socket = io({ query: { matchId: queryMatchId } });
 
 const ids = [
   'homeTeam', 'awayTeam', 'gameStatus', 'inningState', 'matchName',
@@ -10,7 +9,9 @@ const ids = [
 ];
 
 const els = Object.fromEntries(ids.map((id) => [id, document.getElementById(id)]));
-let matchNameById = {};
+const overlayRoot = document.getElementById('overlayRoot');
+const batterStrip = document.querySelector('.batter-strip');
+const stateCache = { lastJson: '' };
 
 function avgText(player) {
   const ab = Number(player?.ab || 0);
@@ -32,13 +33,31 @@ function findPlayerById(players, playerId) {
   return (players || []).find((p) => p.id === playerId);
 }
 
-function renderState(payload) {
-  const state = payload?.state || payload;
-  const matchId = payload?.matchId || queryMatchId;
+function getMatchData(root) {
+  const activeMatchId = queryMatchId || root.activeMatchId || Object.keys(root.matches || {})[0] || '';
+  const match = root.matches?.[activeMatchId] || null;
+  return { activeMatchId, match };
+}
+
+function applySettings(state) {
+  const settings = state?.settings || {};
+  overlayRoot.classList.toggle('overlay-compact', Boolean(settings.compactOverlay));
+  batterStrip.style.display = settings.showBatterStrip === false ? 'none' : '';
+}
+
+function renderState(root) {
+  const { match } = getMatchData(root);
+  if (!match?.state) {
+    return;
+  }
+
+  const state = match.state;
+  applySettings(state);
+
   els.homeTeam.textContent = state.homeTeam;
   els.awayTeam.textContent = state.awayTeam;
   els.gameStatus.textContent = state.gameStatus;
-  els.matchName.textContent = matchNameById[matchId] || (matchId ? `MATCH ${matchId.slice(0, 8).toUpperCase()}` : 'PARTITA');
+  els.matchName.textContent = match.name || 'PARTITA';
   els.inningState.textContent = `${state.half === 'top' ? 'TOP' : 'BOT'} ${state.inning}`;
 
   els.homeRuns.textContent = state.homeRuns;
@@ -64,16 +83,24 @@ function renderState(payload) {
   els.awayBatterLine.textContent = battingLine(awayBatter);
   els.homeBatterLine.textContent = battingLine(homeBatter);
 
-  document.getElementById('awayBatterCard').style.outline = state.battingSide === 'away' ? '2px solid rgba(76, 195, 255, 0.7)' : 'none';
-  document.getElementById('homeBatterCard').style.outline = state.battingSide === 'home' ? '2px solid rgba(76, 195, 255, 0.7)' : 'none';
+  document.getElementById('awayBatterCard').style.outline = state.battingSide === 'away' ? '2px solid rgba(46, 242, 198, 0.8)' : 'none';
+  document.getElementById('homeBatterCard').style.outline = state.battingSide === 'home' ? '2px solid rgba(46, 242, 198, 0.8)' : 'none';
+
+  stateCache.lastJson = JSON.stringify(root);
 }
 
-socket.on('scoreboard:state', renderState);
+async function refreshOverlay() {
+  try {
+    const root = await loadRoot();
+    const json = JSON.stringify(root);
+    if (json === stateCache.lastJson) {
+      return;
+    }
+    renderState(root);
+  } catch (error) {
+    console.error('Overlay refresh failed', error);
+  }
+}
 
-socket.on('scoreboard:matches', (payload = {}) => {
-  const map = {};
-  (payload.matches || []).forEach((m) => {
-    map[m.id] = m.name;
-  });
-  matchNameById = map;
-});
+refreshOverlay();
+setInterval(refreshOverlay, POLL_INTERVAL_MS);
